@@ -3,7 +3,6 @@ import face_recognition
 import numpy as np
 import os
 from datetime import datetime
-import threading
 
 path = 'facerecoimg'
 images = []
@@ -25,62 +24,86 @@ def findEncodings(images):
         encodeList.append(encode)
     return encodeList
 
-def markAttendance(name):
+def markAttendance(name, action):
     with open('attendanceimg/attendance.csv','a') as f:
         now = datetime.now()
         dtString = now.strftime('%H:%M:%S')
-        f.write(f'\n{name},{dtString},Entry')
-
-def markExit(name):
-    with open('attendanceimg/attendance.csv', 'a') as f:  
-        now = datetime.now()
-        exit_time = now.strftime('%H:%M:%S')
-        f.write(f'\n{name},{exit_time},Exit')  
+        f.write(f'\n{name},{dtString},{action}')
 
 encodelistknown = findEncodings(images)
 print(len(encodelistknown))
 
-def capture_loop():
-    cap = cv2.VideoCapture(0)
+# Initialize webcam
+cap = cv2.VideoCapture(0)
+
+# Check if webcam is opened successfully
+if not cap.isOpened():
+    print("Error: Could not open webcam.")
+else:
     while True:
-        success, img = cap.read()
-        imgS = cv2.resize(img, (0, 0), None, 0.25, 0.25)
-        imgS = cv2.cvtColor(imgS, cv2.COLOR_BGR2RGB)
+        command = input("Please type 'entry' to mark entry or 'exit' to mark exit: ")
 
-        facescurframe = face_recognition.face_locations(imgS)
-        encodescurframe = face_recognition.face_encodings(imgS, facescurframe)
+        if command.lower() == 'entry':
+            while True:
+                success, img = cap.read()
+                if not success:
+                    print("Error: Failed to capture frame from webcam.")
+                    break
+                
+                imgS = cv2.resize(img, (0, 0), None, 0.25, 0.25)
+                imgS = cv2.cvtColor(imgS, cv2.COLOR_BGR2RGB)
 
-        for encodeface, faceloc in zip(encodescurframe, facescurframe):
-            matches = face_recognition.compare_faces(encodelistknown, encodeface)
-            facedis = face_recognition.face_distance(encodelistknown, encodeface)
-            matchindex = np.argmin(facedis)
+                facescurframe = face_recognition.face_locations(imgS)
+                encodescurframe = face_recognition.face_encodings(imgS, facescurframe)
 
-            if matches[matchindex]:
-                name = classnames[matchindex].upper()
-                y1, x2, y2, x1 = faceloc
-                y1, x2, y2, x1 = y1*4, x2*4, y2*4, x1*4
-                cv2.rectangle(img,(x1,y1),(x2,y2),(0,255,0),2)
-                cv2.rectangle(img,(x1,y2-35),(x2,y2),(0,255,0),cv2.FILLED)
-                cv2.putText(img,name,(x1+6,y2-6),cv2.FONT_HERSHEY_COMPLEX,1,(255,255,255),2)
-                markAttendance(name)
+                for encodeface, faceloc in zip(encodescurframe, facescurframe):
+                    matches = face_recognition.compare_faces(encodelistknown, encodeface)
+                    facedis = face_recognition.face_distance(encodelistknown, encodeface)
+                    matchindex = np.argmin(facedis)
 
-        cv2.imshow('webcam',img)
+                    if matches[matchindex]:
+                        name = classnames[matchindex].upper()
+                        markAttendance(name, "Entry")
+
+                cv2.imshow('webcam',img)
+                if cv2.waitKey(1) == ord('q'):
+                    break
+
+        elif command.lower() == 'exit':
+            # Reopen webcam
+            cap.release()
+            cap = cv2.VideoCapture(0)
+
+            while True:
+                success, img = cap.read()
+                if not success:
+                    print("Error: Failed to capture frame from webcam.")
+                    break
+                
+                imgS = cv2.resize(img, (0, 0), None, 0.25, 0.25)
+                imgS = cv2.cvtColor(imgS, cv2.COLOR_BGR2RGB)
+
+                facescurframe = face_recognition.face_locations(imgS)
+                encodescurframe = face_recognition.face_encodings(imgS, facescurframe)
+
+                for encodeface, faceloc in zip(encodescurframe, facescurframe):
+                    matches = face_recognition.compare_faces(encodelistknown, encodeface)
+                    facedis = face_recognition.face_distance(encodelistknown, encodeface)
+                    matchindex = np.argmin(facedis)
+
+                    if matches[matchindex]:
+                        name = classnames[matchindex].upper()
+                        markAttendance(name, "Exit")
+
+                cv2.imshow('webcam',img)
+                if cv2.waitKey(1) == ord('q'):
+                    break
+
+        else:
+            print("Invalid command. Please type 'entry' or 'exit'.")
+
         if cv2.waitKey(1) == ord('q'):
             break
 
     cap.release()
     cv2.destroyAllWindows()
-
-def input_loop():
-    while True:
-        command = input("Type 'scan' to mark exit: ")
-        if command.lower() == 'scan':
-            name = input("Enter the name of the person exiting: ")
-            markExit(name)
-            print(f"{name} marked as exited.")
-
-
-capture_thread = threading.Thread(target=capture_loop)
-capture_thread.start()
-
-input_loop()
